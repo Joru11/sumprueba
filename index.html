@@ -138,25 +138,31 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
   attribution: 'Map data © OpenStreetMap contributors'
 }).addTo(map);
 
+// ---------------- LOGIN + UBICACIONES -----------------
 const usuarios = [
   { user:"despachobt", pass:"Pluz2025", rol:"admin" },
   { user:"tecnico1", pass:"1234", rol:"user" },
   { user:"tecnico2", pass:"1234", rol:"user" }
 ];
 let usuarioActivo = null;
+let markersUsuarios = {};
 
 function login(){
   const u = user.value.trim(), p = pass.value.trim();
   const ok = usuarios.find(x => x.user === u && x.pass === p);
   loginMsg.textContent = ok ? "" : "❌ Usuario o contraseña incorrectos";
 
-  if(ok){
-    usuarioActivo = ok;
-    loginScreen.style.display = "none";
-    configurarUI(ok.rol);
+if(ok){
+  usuarioActivo = ok;
+  loginScreen.style.display = "none";
+  configurarUI(ok.rol);
 
-    if(ok.rol === "user") registrarUbicacion(ok.user);
-    if(ok.rol === "admin") iniciarMonitoreoUsuarios();
+  if(ok.rol === "user"){
+    registrarUbicacion(ok.user); // técnico: guarda y dibuja su propia ubicación
+  }
+  if(ok.rol === "admin"){
+    registrarUbicacion("admin"); // 🔹 ahora el admin también tiene marcador propio
+    iniciarMonitoreoUsuarios();  // monitorea a todos los técnicos
   }
 }
 
@@ -170,6 +176,7 @@ function configurarUI(rol){
   }
 }
 
+// --- guardar ubicación de un técnico y mostrar marcador ---
 function registrarUbicacion(nombre){
   function guardar(){
     if(navigator.geolocation){
@@ -180,7 +187,21 @@ function registrarUbicacion(nombre){
           fecha: Date.now()
         };
         localStorage.setItem("ubicacion_"+nombre, JSON.stringify(ubicacion));
-        console.log("📍 Ubicación guardada para", nombre, ubicacion);
+
+        // 🔹 Colores: admin = morado, técnico = azul
+        const color = (nombre === "admin" ? "purple" : "blue");
+
+        if(markersUsuarios[nombre]){
+          markersUsuarios[nombre].setLatLng([ubicacion.lat, ubicacion.lon]);
+          markersUsuarios[nombre].setTooltipContent(
+            `${nombre}<br>${new Date(ubicacion.fecha).toLocaleTimeString()}`
+          );
+        } else {
+          markersUsuarios[nombre] = L.circleMarker([ubicacion.lat, ubicacion.lon], {
+            radius: 8, color: color
+          }).addTo(map)
+            .bindTooltip(`${nombre}<br>${new Date(ubicacion.fecha).toLocaleTimeString()}`);
+        }
       });
     }
   }
@@ -188,7 +209,7 @@ function registrarUbicacion(nombre){
   setInterval(guardar, 20*60*1000); // cada 20 minutos
 }
 
-let markersUsuarios = {};
+// --- admin monitorea técnicos ---
 function iniciarMonitoreoUsuarios(){
   setInterval(()=>{
     usuarios.filter(u=>u.rol==="user").forEach(u=>{
