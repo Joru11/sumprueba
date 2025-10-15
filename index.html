@@ -124,7 +124,8 @@ html, body {
 
   <h6>🕑 Historial (últimos 3):</h6>
   <ul id="historial" class="list-group small mb-3"></ul>
-
+<h6>📍 Usuarios logeados:</h6>
+<ul id="listaUsuarios" class="list-group small mb-3"></ul>
   <h4>📡 Buscar SED</h4>
   <div class="input-group mb-2">
     <input type="text" id="searchSED" class="form-control" placeholder="Nombre de SED">
@@ -164,6 +165,52 @@ html, body {
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+  import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
+
+  // Configuración Firebase
+  const firebaseConfig = {
+  apiKey: "AIzaSyACuFXzFCmdORKEC19XBpLsajCObkFLiLk",
+  authDomain: "mapa-pluz.firebaseapp.com",
+  databaseURL: "https://mapa-pluz-default-rtdb.firebaseio.com",
+  projectId: "mapa-pluz",
+  storageBucket: "mapa-pluz.firebasestorage.app",
+  messagingSenderId: "313264926991",
+  appId: "1:313264926991:web:ea7c86f0f6862790fd0e7a"
+};
+
+  // Inicializar Firebase
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+
+  // --- Guardar ubicación de un usuario ---
+ window.registrarUbicacion = function(nombre) {
+  if (navigator.geolocation) {
+    navigator.geolocation.watchPosition(pos => {
+      const ubicacion = {
+        lat: pos.coords.latitude,
+        lon: pos.coords.longitude,
+        fecha: Date.now(),
+        usuario: nombre
+      };
+      set(ref(db, "ubicaciones/" + nombre), ubicacion);
+    }, err => {
+      console.error("Error geolocalización:", err);
+    }, { enableHighAccuracy:true });
+  }
+};
+
+  // --- Monitorear todos los usuarios en tiempo real ---
+  window.iniciarMonitoreoUsuarios = function(callback) {
+    const refUbicaciones = ref(db, "ubicaciones");
+    onValue(refUbicaciones, snapshot => {
+      const data = snapshot.val();
+      if (callback) callback(data);
+    });
+  };
+</script>
 <script>
 let datos = [], sedDatos = [], historial = [], cercanosMarkers = [], atenciones = [];
 let ultimoEncontro = null, ultimaSED = null, map, marker;
@@ -186,23 +233,60 @@ let usuarioActivo = null;
 let markersUsuarios = {};
 
 function login(){
-  const u = user.value.trim(), p = pass.value.trim();
+  const u = document.getElementById("user").value.trim();
+  const p = document.getElementById("pass").value.trim();
   const ok = usuarios.find(x => x.user === u && x.pass === p);
-  loginMsg.textContent = ok ? "" : "❌ Usuario o contraseña incorrectos";
+  document.getElementById("loginMsg").textContent = ok ? "" : "❌ Usuario o contraseña incorrectos";
 
-if(ok){
-  usuarioActivo = ok;
-  loginScreen.style.display = "none";
-  configurarUI(ok.rol);
+  if(ok){
+    usuarioActivo = ok;
+    document.getElementById("loginScreen").style.display = "none";
+    configurarUI(ok.rol);
 
-  if(ok.rol === "user"){
-    registrarUbicacion(ok.user); // técnico: guarda y dibuja su propia ubicación
+    if(ok.rol === "user"){
+      registrarUbicacion(ok.user);
+    }
+    if(ok.rol === "admin"){
+      registrarUbicacion(ok.user); // el admin también tiene marcador
+      iniciarMonitoreoUsuarios(data => {
+        const lista = document.getElementById("listaUsuarios");
+        lista.innerHTML = "";
+
+        if(data){
+          Object.keys(data).forEach(user => {
+            const {lat, lon, fecha} = data[user];
+            if(!lat || !lon) {
+              console.warn(`Usuario ${user} aún no compartió ubicación`);
+              return;
+            }
+            // Crear/actualizar marcador en el mapa
+            if(!markersUsuarios[user]){
+              markersUsuarios[user] = L.circleMarker([lat, lon], {
+                radius: 8,
+                color: user === "despachobt" ? "blue" : "green"
+              }).addTo(map).bindTooltip(`${user}<br>${new Date(fecha).toLocaleTimeString()}`);
+            } else {
+              markersUsuarios[user].setLatLng([lat, lon]);
+              markersUsuarios[user].setTooltipContent(`${user}<br>${new Date(fecha).toLocaleTimeString()}`);
+            }
+
+            // Agregar a la lista lateral
+            const li = document.createElement("li");
+            li.className = "list-group-item d-flex justify-content-between align-items-center";
+            const hora = new Date(fecha).toLocaleTimeString();
+            li.innerHTML = `
+              <span>👤 ${user}<br><small class="text-muted">⏰ ${hora}</small></span>
+              <button class="btn btn-sm btn-outline-primary">📍</button>
+            `;
+            li.querySelector("button").addEventListener("click", ()=>{
+              map.setView([lat, lon], 17, {animate:true});
+            });
+            lista.appendChild(li);
+          });
+        }
+      });
+    }
   }
-  if(ok.rol === "admin"){
-    registrarUbicacion("admin"); // 🔹 ahora el admin también tiene marcador propio
-    iniciarMonitoreoUsuarios();  // monitorea a todos los técnicos
-  }
-}
 }
 
 function configurarUI(rol){
@@ -216,63 +300,6 @@ function configurarUI(rol){
 }
 
 // --- guardar ubicación de un técnico y mostrar marcador ---
-function registrarUbicacion(nombre){
-  function guardar(){
-    if(navigator.geolocation){
-      navigator.geolocation.getCurrentPosition(pos=>{
-        const ubicacion = {
-          lat: pos.coords.latitude,
-          lon: pos.coords.longitude,
-          fecha: Date.now()
-        };
-        localStorage.setItem("ubicacion_"+nombre, JSON.stringify(ubicacion));
-
-        // 🔹 Colores: admin = morado, técnico = azul
-        const color = (nombre === "admin" ? "purple" : "blue");
-
-       if(markersUsuarios[nombre]){
-  markersUsuarios[nombre].setLatLng([ubicacion.lat, ubicacion.lon]);
-  markersUsuarios[nombre].setTooltipContent(
-    `${nombre}<br>${new Date(ubicacion.fecha).toLocaleTimeString()}`
-  );
-} else {
-  markersUsuarios[nombre] = L.circleMarker([ubicacion.lat, ubicacion.lon], {
-    radius: 10,
-    color: color,
-    fillColor: color,
-    fillOpacity: 0.6
-  }).addTo(map)
-    .bindTooltip(`${nombre}<br>${new Date(ubicacion.fecha).toLocaleTimeString()}`, {permanent:false});
-
-  // 🔹 Solo centrar la PRIMERA vez
-  map.setView([ubicacion.lat, ubicacion.lon], 16);
-}
-      });
-    }
-  }
-  guardar(); // al inicio
-  setInterval(guardar, 20*60*1000); // cada 20 minutos
-}
-
-// --- admin monitorea técnicos ---
-function iniciarMonitoreoUsuarios(){
-  setInterval(()=>{
-    usuarios.filter(u=>u.rol==="user").forEach(u=>{
-      const data = localStorage.getItem("ubicacion_"+u.user);
-      if(data){
-        const {lat, lon, fecha} = JSON.parse(data);
-        if(!markersUsuarios[u.user]){
-          markersUsuarios[u.user] = L.circleMarker([lat, lon], {
-            radius: 8, color:"green"
-          }).addTo(map).bindTooltip(`${u.user}<br>${new Date(fecha).toLocaleTimeString()}`);
-        } else {
-          markersUsuarios[u.user].setLatLng([lat, lon]);
-          markersUsuarios[u.user].setTooltipContent(`${u.user}<br>${new Date(fecha).toLocaleTimeString()}`);
-        }
-      }
-    });
-  }, 30*1000); // refrescar cada 30s
-}
 
 const urls = [
   {nombre:"NORTE CHICO",url:"https://dl.dropboxusercontent.com/scl/fi/gq78aaeeowpllmk6aq6u8/NORTE-CHICO.csv?rlkey=amoh5m764nbkoobv8tggbbmhb"},
