@@ -7,27 +7,27 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <style>
 	#panelAtenciones.hidden {
-  	display: none !important;
-	}
-  body { margin: 0; height: 100vh; display: flex; overflow: hidden; }
-  #sidebar { width: 320px; background: #f8f9fa; padding: 15px; overflow-y: auto; transition: all 0.3s ease; }
-  #sidebar.hidden { transform: translateX(-100%); }
-  #map { flex: 1; }
-  .fade-in { animation: fadeIn 0.5s ease-in-out; }
-  @keyframes fadeIn { from {opacity:0;} to {opacity:1;} }
-  .toggle-btn { position: absolute; top: 10px; left: 10px; z-index: 1000; }
-  #loginScreen {
-    position: fixed; top:0; left:0; width:100%; height:100%; 
-    background: rgba(0,0,0,0.7); display:flex; justify-content:center; align-items:center;
-    z-index:2000;
-  }
-  #loginBox {
-    background:white; padding:20px; border-radius:8px; width:300px; text-align:center;
-  }
-  #loginBox img { width: 120px; margin-bottom: 15px; }
+  display: none !important;
+}
+body { margin: 0; height: 100vh; display: flex; overflow: hidden; }
+#sidebar { width: 320px; background: #f8f9fa; padding: 15px; overflow-y: auto; transition: all 0.3s ease; }
+#sidebar.hidden { transform: translateX(-100%); }
+#map { flex: 1; }
+.fade-in { animation: fadeIn 0.5s ease-in-out; }
+@keyframes fadeIn { from {opacity:0;} to {opacity:1;} }
+.toggle-btn { position: absolute; top: 10px; left: 10px; z-index: 1000; }
+#loginScreen {
+  position: fixed; top:0; left:0; width:100%; height:100%; 
+  background: rgba(0,0,0,0.7); display:flex; justify-content:center; align-items:center;
+  z-index:2000;
+}
+#loginBox {
+  background:white; padding:20px; border-radius:8px; width:300px; text-align:center;
+}
+#loginBox img { width: 120px; margin-bottom: 15px; }
 
-  /* Panel derecho de atenciones */
-  #panelAtenciones {
+/* Panel derecho de atenciones */
+#panelAtenciones {
   position: absolute;
   right: 0;
   top: 0;
@@ -39,15 +39,53 @@
   padding: 15px;
   z-index: 1500;
 
-  /* animación */
   transform: translateX(100%);
   transition: transform 0.4s ease-in-out;
 }
-
-/* Cuando está visible */
 #panelAtenciones.visible {
   transform: translateX(0);
 }
+
+/* --- 🔹 Ajustes para móviles --- */
+html, body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+#map {
+  height: 100vh;
+  width: 100vw;
+}
+@media (max-width: 768px) {
+  #sidebar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 80%;
+    max-width: 300px;
+    background: #fff;
+    z-index: 1500;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease-in-out;
+    overflow-y: auto;
+  }
+  #sidebar.visible {
+    transform: translateX(0);
+  }
+  .toggle-btn {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 2000;
+  }
+}
+/* 🔹 Ajuste botón en móvil */
+  #toggleAtencionesBtn {
+    bottom: 70px !important;
+    right: 20px;
+  }
 </style>
 </head>
 <body>
@@ -192,17 +230,23 @@ function registrarUbicacion(nombre){
         // 🔹 Colores: admin = morado, técnico = azul
         const color = (nombre === "admin" ? "purple" : "blue");
 
-        if(markersUsuarios[nombre]){
-          markersUsuarios[nombre].setLatLng([ubicacion.lat, ubicacion.lon]);
-          markersUsuarios[nombre].setTooltipContent(
-            `${nombre}<br>${new Date(ubicacion.fecha).toLocaleTimeString()}`
-          );
-        } else {
-          markersUsuarios[nombre] = L.circleMarker([ubicacion.lat, ubicacion.lon], {
-            radius: 8, color: color
-          }).addTo(map)
-            .bindTooltip(`${nombre}<br>${new Date(ubicacion.fecha).toLocaleTimeString()}`);
-        }
+       if(markersUsuarios[nombre]){
+  markersUsuarios[nombre].setLatLng([ubicacion.lat, ubicacion.lon]);
+  markersUsuarios[nombre].setTooltipContent(
+    `${nombre}<br>${new Date(ubicacion.fecha).toLocaleTimeString()}`
+  );
+} else {
+  markersUsuarios[nombre] = L.circleMarker([ubicacion.lat, ubicacion.lon], {
+    radius: 10,
+    color: color,
+    fillColor: color,
+    fillOpacity: 0.6
+  }).addTo(map)
+    .bindTooltip(`${nombre}<br>${new Date(ubicacion.fecha).toLocaleTimeString()}`, {permanent:false});
+
+  // 🔹 Solo centrar la PRIMERA vez
+  map.setView([ubicacion.lat, ubicacion.lon], 16);
+}
       });
     }
   }
@@ -417,7 +461,10 @@ function actualizarMapa(lat,lon,encontrado){
 // Abrir en Google Maps
 function abrirEnGoogleMaps(){ if(ultimoEncontro){ window.open(`https://www.google.com/maps/search/?api=1&query=${ultimoEncontro.lat},${ultimoEncontro.lon}`,'_blank'); }}
 function abrirEnGoogleMapsSED(){ if(ultimaSED){ window.open(`https://www.google.com/maps/search/?api=1&query=${ultimaSED.lat},${ultimaSED.lon}`,'_blank'); }}
-function toggleSidebar(){ sidebar.classList.toggle("hidden"); }
+function toggleSidebar(){
+  const sidebar = document.getElementById("sidebar");
+  sidebar.classList.toggle("visible");
+}
 </script>
 <script>
 // --- FUNCION AUXILIAR: calcular distancia (en metros aprox) ---
